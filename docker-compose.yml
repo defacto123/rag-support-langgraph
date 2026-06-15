@@ -1,0 +1,12 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rag_qdrant
+    ports:
+      - "6333:6333"   # REST API (used by our app)
+      - "6334:6334"   # gRPC API
+    volumes:
+      # Persist vectors on the host so data survives container restarts.
+      # This path is gitignored.
+      - ./data/qdrant_storage:/qdrant/storage
+    restart: unless-stopped
