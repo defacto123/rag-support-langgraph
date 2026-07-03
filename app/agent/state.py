@@ -41,3 +41,12 @@ class AgentState(TypedDict, total=False):
 
     # How many times we have rewritten the question (loop guard).
     retries: int
+
+    # Whether the groundedness grader accepted the last generation.
+    answer_grounded: bool
+
+    # How many times we have regenerated the answer (loop guard).
+    generation_retries: int
+
+    # Consecutive clarification attempts on the SAME point (anti-repetition).
+    clarify_count: int

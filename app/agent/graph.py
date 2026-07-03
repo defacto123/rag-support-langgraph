@@ -11,8 +11,11 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from app.agent.nodes import (
+    elaborate,
+    finalize,
     generate,
     generate_direct,
+    grade_answer,
     grade_documents,
     respond_no_context,
     retrieve,
@@ -24,10 +27,27 @@ from app.agent.state import AgentState
 # Max number of question rewrites before giving up (loop guard).
 MAX_RETRIES = 2
 
+# Max number of answer regenerations if the answer is not grounded.
+MAX_GENERATION_RETRIES = 2
+
+
+def decide_after_answer(state: AgentState) -> str:
+    """Conditional edge: accept, regenerate, or give up on the answer."""
+    if state.get("answer_grounded"):
+        return "finalize"
+    if state.get("generation_retries", 0) < MAX_GENERATION_RETRIES:
+        return "generate"
+    return "respond_no_context"
+
 
 def decide_route(state: AgentState) -> str:
-    """Conditional edge out of `route`: search documents or answer directly."""
-    return "retrieve" if state.get("route") == "retrieve" else "generate_direct"
+    """Conditional edge out of `route`: retrieve, clarify, or answer directly."""
+    intent = state.get("route")
+    if intent == "retrieve":
+        return "retrieve"
+    if intent == "clarify":
+        return "elaborate"
+    return "generate_direct"
 
 
 def decide_after_grading(state: AgentState) -> str:
@@ -50,19 +70,27 @@ def build_graph():
 
     builder.add_node("route", route)
     builder.add_node("generate_direct", generate_direct)
+    builder.add_node("elaborate", elaborate)
     builder.add_node("retrieve", retrieve)
     builder.add_node("grade_documents", grade_documents)
     builder.add_node("rewrite", rewrite)
     builder.add_node("generate", generate)
+    builder.add_node("grade_answer", grade_answer)
     builder.add_node("respond_no_context", respond_no_context)
+    builder.add_node("finalize", finalize)
 
     builder.add_edge(START, "route")
     builder.add_conditional_edges(
         "route",
         decide_route,
-        {"retrieve": "retrieve", "generate_direct": "generate_direct"},
+        {
+            "retrieve": "retrieve",
+            "elaborate": "elaborate",
+            "generate_direct": "generate_direct",
+        },
     )
-    builder.add_edge("generate_direct", END)
+    builder.add_edge("generate_direct", "finalize")
+    builder.add_edge("elaborate", "finalize")
     builder.add_edge("retrieve", "grade_documents")
     builder.add_conditional_edges(
         "grade_documents",
@@ -75,8 +103,19 @@ def build_graph():
     )
     # The loop: after rewriting, retrieve again with the new question.
     builder.add_edge("rewrite", "retrieve")
-    builder.add_edge("generate", END)
-    builder.add_edge("respond_no_context", END)
+    # Self-RAG: validate the answer before accepting it.
+    builder.add_edge("generate", "grade_answer")
+    builder.add_conditional_edges(
+        "grade_answer",
+        decide_after_answer,
+        {
+            "finalize": "finalize",
+            "generate": "generate",
+            "respond_no_context": "respond_no_context",
+        },
+    )
+    builder.add_edge("respond_no_context", "finalize")
+    builder.add_edge("finalize", END)
 
     # The checkpointer persists state per thread_id, giving the agent memory
     # across turns of the same conversation.
