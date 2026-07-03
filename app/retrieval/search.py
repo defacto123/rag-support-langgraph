@@ -52,17 +52,20 @@ def search_mmr(
     )
 
 
-def format_context(results: list[Result]) -> tuple[str, list[dict]]:
-    """Turn retrieval results into (context, sources).
+def format_context(results: list[Result]) -> tuple[str, list[dict], list[str]]:
+    """Turn retrieval results into (context, sources, contexts).
 
-    context: numbered blocks fed to the LLM so it can cite "Източник N".
-    sources: structured list shown to the user under the answer.
+    context:  numbered blocks fed to the LLM so it can cite "Източник N".
+    sources:  structured list shown to the user under the answer.
+    contexts: the full text of each retrieved chunk, one per item, used by
+              evaluation (Ragas) which needs per-chunk retrieved contexts.
 
     Accepts either plain Documents (MMR) or (Document, score) tuples
     (similarity), so it works with any search function above.
     """
     context_parts: list[str] = []
     sources: list[dict] = []
+    contexts: list[str] = []
 
     for i, result in enumerate(results, start=1):
         # Normalise: split into document + optional score.
@@ -72,6 +75,7 @@ def format_context(results: list[Result]) -> tuple[str, list[dict]]:
             doc, score = result, None
 
         context_parts.append(f"[Източник {i}]\n{doc.page_content}")
+        contexts.append(doc.page_content)
 
         sources.append(
             {
@@ -84,7 +88,7 @@ def format_context(results: list[Result]) -> tuple[str, list[dict]]:
         )
 
     context = "\n\n---\n\n".join(context_parts)
-    return context, sources
+    return context, sources, contexts
 
 
 def search(
@@ -108,11 +112,12 @@ def search(
         # Keep only matches at/above the threshold (score = similarity).
         results = [(doc, s) for doc, s in scored if s >= score_threshold]
 
-    context, sources = format_context(results)
+    context, sources, contexts = format_context(results)
 
     return {
         "query": query,
         "context": context,
         "sources": sources,
+        "contexts": contexts,
         "found": len(sources) > 0,
     }

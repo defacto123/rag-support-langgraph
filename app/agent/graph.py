@@ -144,4 +144,5 @@ def ask(question: str, thread_id: str = "default") -> dict:
     return {
         "answer": result.get("generation", ""),
         "sources": result.get("sources", []),
+        "contexts": result.get("contexts", []),
     }
