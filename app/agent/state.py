@@ -6,12 +6,18 @@ state. Defining it as a TypedDict documents exactly what data exists and
 keeps the nodes honest about their inputs/outputs.
 """
 
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 from langchain_core.documents import Document
+from langchain_core.messages import AnyMessage
+from langgraph.graph.message import add_messages
 
 
 class AgentState(TypedDict, total=False):
+    # Full conversation history. The `add_messages` reducer APPENDS new
+    # messages instead of overwriting, so history accumulates across turns.
+    messages: Annotated[list[AnyMessage], add_messages]
+
     # The user's current question (may be rewritten during the run).
     question: str
 

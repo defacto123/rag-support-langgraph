@@ -6,6 +6,8 @@ Full shape:
     retrieve -> grade_documents -> (generate | rewrite -> retrieve | respond_no_context)
 """
 
+from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from app.agent.nodes import (
@@ -76,16 +78,30 @@ def build_graph():
     builder.add_edge("generate", END)
     builder.add_edge("respond_no_context", END)
 
-    return builder.compile()
+    # The checkpointer persists state per thread_id, giving the agent memory
+    # across turns of the same conversation.
+    return builder.compile(checkpointer=MemorySaver())
 
 
 # Compiled once and reused.
 _graph = build_graph()
 
 
-def ask(question: str) -> dict:
-    """Run the agent for a single question. Returns answer + sources."""
-    result = _graph.invoke({"question": question, "retries": 0})
+def ask(question: str, thread_id: str = "default") -> dict:
+    """Run the agent for one turn of a conversation.
+
+    thread_id identifies the conversation; reusing it resumes prior state
+    (memory). New thread_id = a fresh, isolated conversation.
+    """
+    config = {"configurable": {"thread_id": thread_id}}
+    result = _graph.invoke(
+        {
+            "messages": [HumanMessage(content=question)],
+            "question": question,
+            "retries": 0,
+        },
+        config=config,
+    )
     return {
         "answer": result.get("generation", ""),
         "sources": result.get("sources", []),
