@@ -262,6 +262,7 @@ def retrieve(state: AgentState) -> AgentState:
     return {
         "context": result["context"],
         "sources": result["sources"],
+        "contexts": result["contexts"],
         "clarify_count": 0,  # a fresh question resets the clarify streak
     }
 

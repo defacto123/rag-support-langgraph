@@ -36,6 +36,9 @@ class AgentState(TypedDict, total=False):
     # Structured source list shown to the user (source, page, score, ...).
     sources: list[dict]
 
+    # Full text of each retrieved chunk (used by evaluation / Ragas).
+    contexts: list[str]
+
     # The final generated answer.
     generation: str
 
