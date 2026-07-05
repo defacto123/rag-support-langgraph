@@ -1,0 +1,77 @@
+name: Deploy to Cloud Run
+
+# Deploys on every push to main (i.e. after a PR is merged). Never deploy
+# manually from a laptop — this pipeline is the single path to production.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGION: europe-west2
+  REPO: rag
+  IMAGE_NAME: app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for keyless auth (Workload Identity Federation)
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keyless auth to GCP via Workload Identity Federation (no SA keys stored).
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & push image
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      # API service uses the image's default command (uvicorn on $PORT).
+      - name: Deploy API
+        run: |
+          gcloud run deploy rag-api \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account "${{ secrets.GCP_RUNTIME_SA }}" \
+            --memory 1Gi --cpu 1 --timeout 300 \
+            --set-env-vars "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }},QDRANT_URL=${{ secrets.QDRANT_URL }},QDRANT_API_KEY=${{ secrets.QDRANT_API_KEY }},QDRANT_COLLECTION=documents"
+
+      - name: Resolve API URL
+        run: |
+          API_URL=$(gcloud run services describe rag-api --region "$REGION" --format='value(status.url)')
+          echo "API_URL=$API_URL" >> "$GITHUB_ENV"
+
+      # UI service overrides the command to run Streamlit, and points at the API.
+      - name: Deploy UI
+        run: |
+          gcloud run deploy rag-ui \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account "${{ secrets.GCP_RUNTIME_SA }}" \
+            --memory 512Mi --cpu 1 --port 8080 \
+            --command streamlit \
+            --args "run,app/ui/streamlit_app.py,--server.port=8080,--server.address=0.0.0.0,--server.enableCORS=false,--server.enableXsrfProtection=false" \
+            --set-env-vars "API_URL=$API_URL"
+
+      - name: Output live URLs
+        run: |
+          echo "API: $API_URL"
+          echo "UI:  $(gcloud run services describe rag-ui --region "$REGION" --format='value(status.url)')"
