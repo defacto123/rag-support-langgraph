@@ -1,12 +1,30 @@
+# Local development stack: API + UI, both talking to Qdrant Cloud (managed).
+# QDRANT_URL / QDRANT_API_KEY come from .env. The same image is deployed to
+# Cloud Run in production (one container per service) — compose is only for
+# local dev convenience.
 services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: rag_qdrant
+  api:
+    build: .
+    container_name: rag_api
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000
     ports:
-      - "6333:6333"   # REST API (used by our app)
-      - "6334:6334"   # gRPC API
-    volumes:
-      # Persist vectors on the host so data survives container restarts.
-      # This path is gitignored.
-      - ./data/qdrant_storage:/qdrant/storage
+      # Host 8080 -> container 8000 (host 8000 may be taken by other apps).
+      - "8080:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  ui:
+    build: .
+    container_name: rag_ui
+    command: streamlit run app/ui/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      # Talk to the API by its service name inside the compose network.
+      - API_URL=http://api:8000
+    depends_on:
+      - api
     restart: unless-stopped

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     # --- Qdrant ---
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "documents"
+    # Empty locally; required by Qdrant Cloud (managed) in production.
+    qdrant_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
