@@ -15,7 +15,11 @@ from app.models import get_embeddings
 
 
 def _get_client() -> QdrantClient:
-    return QdrantClient(url=settings.qdrant_url)
+    # api_key is None locally (open Qdrant) and set for Qdrant Cloud.
+    return QdrantClient(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key or None,
+    )
 
 
 def get_vectorstore() -> QdrantVectorStore:
