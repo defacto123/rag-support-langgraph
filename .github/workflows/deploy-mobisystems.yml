@@ -1,0 +1,79 @@
+name: Deploy MobiSystems KB service
+
+# Manual-only pipeline for the pre-indexed MobiSystems support assistant.
+# It reuses the same Docker image as the main app, but points at the
+# 'mobisystems' Qdrant collection and disables uploads (chat-only KB).
+# Run it from the Actions tab (or `gh workflow run`) whenever the KB or
+# image needs to be re-deployed.
+on:
+  workflow_dispatch:
+
+env:
+  REGION: europe-west2
+  REPO: rag
+  IMAGE_NAME: app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for keyless auth (Workload Identity Federation)
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & push image
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      # API points at the pre-indexed 'mobisystems' collection; uploads are off.
+      - name: Deploy MobiSystems API
+        run: |
+          gcloud run deploy mobi-api \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account "${{ secrets.GCP_RUNTIME_SA }}" \
+            --memory 1Gi --cpu 1 --timeout 300 \
+            --set-env-vars "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }},QDRANT_URL=${{ secrets.QDRANT_URL }},QDRANT_API_KEY=${{ secrets.QDRANT_API_KEY }},QDRANT_COLLECTION=mobisystems,DISABLE_UPLOAD=true"
+
+      - name: Resolve API URL
+        run: |
+          API_URL=$(gcloud run services describe mobi-api --region "$REGION" --format='value(status.url)')
+          echo "API_URL=$API_URL" >> "$GITHUB_ENV"
+
+      # UI runs Streamlit with upload hidden and a MobiSystems-branded title.
+      # '^@^' tells gcloud to split env vars on '@' so commas in the subtitle
+      # are preserved as literal text.
+      - name: Deploy MobiSystems UI
+        run: |
+          gcloud run deploy mobi-ui \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account "${{ secrets.GCP_RUNTIME_SA }}" \
+            --memory 512Mi --cpu 1 --port 8080 \
+            --command streamlit \
+            --args "run,app/ui/streamlit_app.py,--server.port=8080,--server.address=0.0.0.0,--server.enableCORS=false,--server.enableXsrfProtection=false" \
+            --set-env-vars "^@^API_URL=$API_URL@DISABLE_UPLOAD=true@APP_TITLE=MobiSystems Support Assistant@APP_SUBTITLE=Ask about MobiOffice, MobiPDF, MobiDrive, refunds and more."
+
+      - name: Output live URLs
+        run: |
+          echo "MobiSystems API: $API_URL"
+          echo "MobiSystems UI:  $(gcloud run services describe mobi-ui --region "$REGION" --format='value(status.url)')"

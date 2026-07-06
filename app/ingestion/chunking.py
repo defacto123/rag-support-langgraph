@@ -64,6 +64,16 @@ def get_splitter(doc_type: str, embeddings: Embeddings):
             chunk_overlap=200,
         )
 
+    if doc_type == "fixed":
+        # Fast, embedding-free fixed-size splitting. Ideal for bulk ingestion
+        # of many short/medium docs where semantic chunking would add a costly
+        # embedding pass per document for little benefit.
+        return RecursiveCharacterTextSplitter(
+            separators=["\n\n", "\n", " "],
+            chunk_size=1000,
+            chunk_overlap=150,
+        )
+
     if doc_type == "semantic":
         # Measures similarity between sentences and splits on topic shifts.
         # Slower (calls the embedding model) but smart for unknown docs.
@@ -120,9 +130,14 @@ def enrich_metadata(chunks: list[Document], doc_type: str) -> list[Document]:
 def chunk_documents(
     docs: list[Document],
     embeddings: Embeddings,
+    force_doc_type: str | None = None,
 ) -> tuple[list[Document], str]:
-    """Detect type, pick a splitter, and split. Returns (chunks, doc_type)."""
-    doc_type = detect_doc_type(docs)
+    """Detect type, pick a splitter, and split. Returns (chunks, doc_type).
+
+    force_doc_type overrides auto-detection (e.g. "fixed" for fast bulk
+    ingestion). When None, behaviour is unchanged.
+    """
+    doc_type = force_doc_type or detect_doc_type(docs)
     splitter = get_splitter(doc_type, embeddings)
     chunks = splitter.split_documents(docs)
 

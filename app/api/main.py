@@ -9,10 +9,11 @@ Endpoints:
 import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.agent.graph import ask
+from app.config import settings
 from app.ingestion.pipeline import ingest_document
 
 app = FastAPI(title="AI Document Assistant")
@@ -40,6 +41,10 @@ def health() -> dict:
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)) -> dict:
     """Save the uploaded file to disk and ingest it into the vector store."""
+    if settings.disable_upload:
+        # Pre-indexed / chat-only deployment: uploads are turned off.
+        raise HTTPException(status_code=403, detail="Uploads are disabled.")
+
     dest = _UPLOAD_DIR / file.filename
     with dest.open("wb") as out:
         shutil.copyfileobj(file.file, out)

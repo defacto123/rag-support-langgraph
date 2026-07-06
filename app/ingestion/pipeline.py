@@ -12,15 +12,16 @@ from app.ingestion.vectorstore import add_chunks
 from app.models import get_embeddings
 
 
-def ingest_document(file_path: str) -> dict:
+def ingest_document(file_path: str, force_doc_type: str | None = None) -> dict:
     """Load, chunk, and store a single document.
 
+    force_doc_type optionally overrides chunking strategy (e.g. "fixed").
     Returns a small summary useful for logging and API responses.
     """
     docs = load_document(file_path)
 
     embeddings = get_embeddings()
-    chunks, doc_type = chunk_documents(docs, embeddings)
+    chunks, doc_type = chunk_documents(docs, embeddings, force_doc_type=force_doc_type)
 
     stored = add_chunks(chunks)
 
