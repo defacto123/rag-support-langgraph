@@ -57,10 +57,10 @@ from app.models import get_embeddings, get_llm  # noqa: E402
 _DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
 _REPORT_PATH = Path("docs/eval_report.md")
 _SAMPLE_DOCS = [
-    "data/uploads/faq.txt",
-    "data/uploads/policy.txt",
-    "data/uploads/sample.txt",
-    "data/uploads/warranty.txt",
+    "data/demo/company_policies.md",
+    "data/demo/warranty_and_support.md",
+    "data/demo/service_agreement.md",
+    "data/demo/faq.md",
 ]
 
 
