@@ -12,7 +12,32 @@ from pydantic import BaseModel, Field
 
 from app.agent.state import AgentState
 from app.models import get_llm
-from app.retrieval.search import search
+from app.retrieval.search import _script, search
+
+
+def _user_question(state: AgentState) -> str:
+    """The user's original wording for this turn.
+
+    `rewrite` may replace `state["question"]` with a search-optimised (and
+    possibly translated) query, so we read the language from the last human
+    message instead — that always reflects what the user actually typed.
+    """
+    for m in reversed(state.get("messages", [])):
+        if m.type == "human":
+            return m.content
+    return state.get("question", "")
+
+
+def _lang_directive(text: str) -> str:
+    """Explicit, unambiguous instruction to answer in the question's language.
+
+    The prompts are written in Bulgarian, which biases the model toward
+    Bulgarian output even for English questions. Injecting a direct order
+    in the target language reliably overrides that bias.
+    """
+    if _script(text) == "cyrillic":
+        return "ВАЖНО: Отговори на български език."
+    return "IMPORTANT: Answer in English."
 
 
 class GradeDocuments(BaseModel):
@@ -46,15 +71,17 @@ _ANSWER_PROMPT = ChatPromptTemplate.from_messages(
         (
             "system",
             "Ти си асистент, който отговаря на въпроси само въз основа на "
-            "предоставения контекст. Отговаряй на езика на въпроса. "
+            "предоставения контекст. ВИНАГИ отговаряй на СЪЩИЯ език, на "
+            "който е зададен въпросът, дори ако контекстът е на друг език — "
+            "в такъв случай преведи нужната информация. "
             "Цитирай източниците като [Източник N], когато ги ползваш. "
             "Ако контекстът не съдържа отговора, честно кажи, че нямаш "
             "информация по въпроса. Не измисляй.",
         ),
         (
             "human",
-            "История на разговора:\n{history}\n\nКонтекст:\n{context}\n\n"
-            "Въпрос: {question}\n\nОтговор:",
+            "{lang_directive}\n\nИстория на разговора:\n{history}\n\n"
+            "Контекст:\n{context}\n\nВъпрос: {question}\n\nОтговор:",
         ),
     ]
 )
@@ -129,11 +156,11 @@ _DIRECT_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Ти си любезен асистент за документи. Отговори кратко на езика "
-            "на потребителя. Ако е уместно, поясни, че можеш да отговаряш "
-            "на въпроси относно качените документи.",
+            "Ти си любезен асистент за документи. Отговори кратко на СЪЩИЯ "
+            "език, на който пише потребителят. Ако е уместно, поясни, че "
+            "можеш да отговаряш на въпроси относно качените документи.",
         ),
-        ("human", "{question}"),
+        ("human", "{lang_directive}\n\n{question}"),
     ]
 )
 
@@ -141,7 +168,12 @@ _DIRECT_PROMPT = ChatPromptTemplate.from_messages(
 def generate_direct(state: AgentState) -> AgentState:
     """Answer general/greeting questions without touching the documents."""
     llm = get_llm(temperature=0.3)
-    response = (_DIRECT_PROMPT | llm).invoke({"question": state["question"]})
+    response = (_DIRECT_PROMPT | llm).invoke(
+        {
+            "question": state["question"],
+            "lang_directive": _lang_directive(_user_question(state)),
+        }
+    )
     return {"generation": response.content, "clarify_count": 0}
 
 
@@ -181,11 +213,13 @@ _ELABORATE_PROMPT = ChatPromptTemplate.from_messages(
             "тогава сложи used_general_knowledge=true.\n"
             "3. Ако не можеш да поясниш сигурно и вярно, сложи "
             "confident=false.\n"
-            "Отговаряй на езика на потребителя.",
+            "ВИНАГИ отговаряй на СЪЩИЯ език, на който е зададен въпросът, "
+            "дори ако контекстът е на друг език — преведи при нужда.",
         ),
         (
             "human",
-            "История:\n{history}\n\nКонтекст от документите:\n{context}\n\n"
+            "{lang_directive}\n\nИстория:\n{history}\n\n"
+            "Контекст от документите:\n{context}\n\n"
             "Молба за пояснение: {question}",
         ),
     ]
@@ -205,6 +239,7 @@ def elaborate(state: AgentState) -> AgentState:
             "history": _history_text(state),
             "context": state.get("context", "(няма запазен контекст)"),
             "question": state["question"],
+            "lang_directive": _lang_directive(_user_question(state)),
         }
     )
 
@@ -285,13 +320,18 @@ def generate(state: AgentState) -> AgentState:
     """Generate the final answer grounded in the retrieved context."""
     context = state.get("context") or "(няма намерен контекст)"
 
+    # Answer the user's ORIGINAL question (not the rewritten search query),
+    # so the reply matches what they asked — and in their language.
+    user_question = _user_question(state)
+
     llm = get_llm()
     chain = _ANSWER_PROMPT | llm
     response = chain.invoke(
         {
             "context": context,
-            "question": state["question"],
+            "question": user_question,
             "history": _history_text(state),
+            "lang_directive": _lang_directive(user_question),
         }
     )
 

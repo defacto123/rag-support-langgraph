@@ -14,6 +14,46 @@ from app.ingestion.vectorstore import get_vectorstore
 Result = Union[Document, tuple[Document, float]]
 
 
+def _doc(result: Result) -> Document:
+    """Extract the Document from a plain-doc or (doc, score) result."""
+    return result[0] if isinstance(result, tuple) else result
+
+
+def _script(text: str) -> str:
+    """Rough script detector: 'cyrillic' vs 'latin'.
+
+    The embedding model is multilingual, so a Bulgarian question can still
+    pull English chunks. This lets us tell the two apart cheaply and
+    deterministically (no extra dependency), which is enough to separate
+    Bulgarian (Cyrillic) from English (Latin) — the bilingual case both
+    knowledge bases use.
+    """
+    cyrillic = sum(1 for ch in text if "\u0400" <= ch <= "\u04ff")
+    latin = sum(1 for ch in text if "a" <= ch.lower() <= "z")
+    total = cyrillic + latin
+    if total == 0:
+        return "latin"
+    # English text has no Cyrillic, while Bulgarian text keeps Latin product
+    # names (MobiOffice, Windows, ...). So any meaningful Cyrillic presence
+    # means Bulgarian, even when Latin characters are the majority.
+    return "cyrillic" if cyrillic / total >= 0.2 else "latin"
+
+
+def _prefer_question_language(
+    query: str, results: list[Result], k: int
+) -> list[Result]:
+    """Reorder results so chunks in the question's language come first.
+
+    Keeps relevance order within each language group, then trims to k.
+    If no chunk matches the question's language, the others are used as-is
+    (the generation step is instructed to translate them).
+    """
+    q_script = _script(query)
+    same = [r for r in results if _script(_doc(r).page_content) == q_script]
+    other = [r for r in results if _script(_doc(r).page_content) != q_script]
+    return (same + other)[:k]
+
+
 def search_similarity(
     query: str,
     k: int = 4,
@@ -105,13 +145,17 @@ def search(
 
     Returns {query, context, sources, found}.
     """
+    # Over-fetch a larger candidate pool so we can prefer chunks written in
+    # the question's language before trimming down to k.
+    pool = max(k * 3, 12)
     if use_mmr:
-        results: list[Result] = search_mmr(query, k=k)
+        candidates: list[Result] = search_mmr(query, k=pool, fetch_k=pool * 3)
     else:
-        scored = search_similarity(query, k=k)
+        scored = search_similarity(query, k=pool)
         # Keep only matches at/above the threshold (score = similarity).
-        results = [(doc, s) for doc, s in scored if s >= score_threshold]
+        candidates = [(doc, s) for doc, s in scored if s >= score_threshold]
 
+    results = _prefer_question_language(query, candidates, k)
     context, sources, contexts = format_context(results)
 
     return {
