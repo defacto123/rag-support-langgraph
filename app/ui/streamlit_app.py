@@ -20,9 +20,9 @@ API_URL = os.getenv("API_URL", "http://127.0.0.1:8010")
 # A pre-indexed deployment (e.g. MobiSystems KB) sets DISABLE_UPLOAD=true and
 # a custom title, turning the app into a chat-only assistant.
 DISABLE_UPLOAD = os.getenv("DISABLE_UPLOAD", "false").lower() == "true"
-APP_TITLE = os.getenv("APP_TITLE", "Твоят документен асистент")
+APP_TITLE = os.getenv("APP_TITLE", "Your Document Assistant")
 APP_SUBTITLE = os.getenv(
-    "APP_SUBTITLE", "Задай въпрос — отговарям само на база твоите документи."
+    "APP_SUBTITLE", "Ask a question — I answer only from your documents."
 )
 
 st.set_page_config(
@@ -156,18 +156,18 @@ if "messages" not in st.session_state:
 # --- Sidebar: document upload (optional) + controls ---
 with st.sidebar:
     if not DISABLE_UPLOAD:
-        st.markdown("## 📎 Документи")
-        st.caption("Качи файл, за да разшириш знанието на асистента.")
+        st.markdown("## 📎 Documents")
+        st.caption("Upload a file to expand the assistant's knowledge.")
 
         uploaded = st.file_uploader(
-            "PDF, TXT, MD или DOCX",
+            "PDF, TXT, MD or DOCX",
             type=["pdf", "txt", "md", "docx"],
             label_visibility="collapsed",
         )
         if uploaded is not None and st.button(
-            "Индексирай документа", use_container_width=True
+            "Index document", use_container_width=True
         ):
-            with st.spinner("Обработвам документа…"):
+            with st.spinner("Processing document…"):
                 try:
                     resp = requests.post(
                         f"{API_URL}/upload",
@@ -176,20 +176,20 @@ with st.sidebar:
                     )
                     resp.raise_for_status()
                     data = resp.json()
-                    st.toast(f"{data['file']} е индексиран успешно", icon="✅")
+                    st.toast(f"{data['file']} indexed successfully", icon="✅")
                     st.success(
-                        f"**Готово! Документът е запазен и индексиран.**\n\n"
-                        f"- Файл: `{data['file']}`\n"
-                        f"- Части (chunks): **{data['chunks']}**\n"
-                        f"- Тип разбиване: `{data['doc_type']}`\n\n"
-                        f"Вече можеш да задаваш въпроси за него."
+                        f"**Done! The document has been saved and indexed.**\n\n"
+                        f"- File: `{data['file']}`\n"
+                        f"- Chunks: **{data['chunks']}**\n"
+                        f"- Chunking type: `{data['doc_type']}`\n\n"
+                        f"You can now ask questions about it."
                     )
                 except requests.RequestException as exc:
-                    st.error(f"Грешка при качване: {exc}")
+                    st.error(f"Upload error: {exc}")
 
         st.divider()
 
-    if st.button("Нов разговор", use_container_width=True):
+    if st.button("New conversation", use_container_width=True):
         st.session_state.thread_id = str(uuid.uuid4())
         st.session_state.messages = []
         st.rerun()
@@ -210,7 +210,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="🧑" if msg["role"] == "user" else "📄"):
         st.markdown(msg["content"])
         if msg.get("sources"):
-            with st.expander("Източници"):
+            with st.expander("Sources"):
                 for s in msg["sources"]:
                     st.markdown(
                         f"""
@@ -223,13 +223,13 @@ for msg in st.session_state.messages:
                     )
 
 # --- Chat input ---
-if prompt := st.chat_input("Напиши въпроса си…"):
+if prompt := st.chat_input("Type your question…"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="🧑"):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="📄"):
-        with st.spinner("Мисля…"):
+        with st.spinner("Thinking…"):
             try:
                 resp = requests.post(
                     f"{API_URL}/chat",
@@ -241,12 +241,12 @@ if prompt := st.chat_input("Напиши въпроса си…"):
                 answer = data["answer"]
                 sources = data.get("sources", [])
             except requests.RequestException as exc:
-                answer = f"Възникна грешка при връзката с бекенда: {exc}"
+                answer = f"Something went wrong connecting to the backend: {exc}"
                 sources = []
 
         st.markdown(answer)
         if sources:
-            with st.expander("Източници"):
+            with st.expander("Sources"):
                 for s in sources:
                     st.markdown(
                         f"""
