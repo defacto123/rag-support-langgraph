@@ -1,38 +1,38 @@
 [
   {
-    "question": "В какъв срок мога да върна продукт?",
-    "ground_truth": "Може да върнете продукт в срок от 30 дни, с касовата бележка."
+    "question": "How long do I have to return a product?",
+    "ground_truth": "You can return a product within 30 days of purchase, as long as you have the original receipt."
   },
   {
-    "question": "Каква е гаранцията на продуктите?",
-    "ground_truth": "Всички продукти имат 2 години (24 месеца) гаранция срещу фабрични дефекти."
+    "question": "What is the warranty on your products?",
+    "ground_truth": "All products come with a 24-month (2-year) manufacturer warranty against factory defects."
   },
   {
-    "question": "Как да се свържа с поддръжката?",
-    "ground_truth": "Пишете на support@example.com или се обадете на 0800 12345."
+    "question": "How do I contact support?",
+    "ground_truth": "You can contact support by email at support@example.com or by phone at +1-800-123-4567."
   },
   {
-    "question": "Какво е работното време на магазина?",
-    "ground_truth": "Магазинът работи от понеделник до петък, от 9:00 до 18:00 часа."
+    "question": "What are the store hours?",
+    "ground_truth": "The store is open Monday to Friday, from 9:00 AM to 6:00 PM."
   },
   {
-    "question": "За колко дни се доставят поръчките?",
-    "ground_truth": "Поръчките се доставят до 3 работни дни в цялата страна."
+    "question": "How long does delivery take?",
+    "ground_truth": "Orders are delivered within 3 business days nationwide."
   },
   {
-    "question": "Какви начини на плащане приемате?",
-    "ground_truth": "Приемаме плащане с карта, в брой и чрез банков превод."
+    "question": "Which payment methods do you accept?",
+    "ground_truth": "We accept credit and debit cards, cash, and bank transfers."
   },
   {
-    "question": "Каква отстъпка получават редовните клиенти?",
-    "ground_truth": "Всяка десета покупка получава 20% отстъпка за редовни клиенти."
+    "question": "What discount do returning customers get?",
+    "ground_truth": "Every 10th purchase earns a 20% discount for returning customers."
   },
   {
-    "question": "В какъв срок мога да се откажа от договора за услуга?",
-    "ground_truth": "Възложителят има право да се откаже от договора в срок от 14 дни от подписването."
+    "question": "How long do I have to cancel the service agreement?",
+    "ground_truth": "The Client has the right to cancel the agreement within 14 days of signing, with no penalty."
   },
   {
-    "question": "Колко струва услугата по договора?",
-    "ground_truth": "Цената на услугата е 1000 лева с включен ДДС."
+    "question": "How much does the service in the agreement cost?",
+    "ground_truth": "The price of the service is $1,000, including all applicable taxes."
   }
 ]

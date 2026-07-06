@@ -66,9 +66,9 @@ Quality is measured objectively with [Ragas](https://docs.ragas.io) against a go
 | Metric | Score | Meaning |
 |---|---|---|
 | **Faithfulness** | 1.00 | Answers are fully grounded in retrieved context (no hallucination) |
-| **Answer relevancy** | 0.82 | Answers address the question |
-| **Context precision** | 0.93 | Retrieved chunks are relevant |
-| **Context recall** | 0.89 | Retrieval captures the needed information |
+| **Answer relevancy** | 0.81 | Answers address the question |
+| **Context precision** | 0.80 | Retrieved chunks are relevant |
+| **Context recall** | 1.00 | Retrieval captures the needed information |
 
 Reproduce:
 

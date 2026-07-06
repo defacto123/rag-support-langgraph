@@ -95,7 +95,7 @@ def search_mmr(
 def format_context(results: list[Result]) -> tuple[str, list[dict], list[str]]:
     """Turn retrieval results into (context, sources, contexts).
 
-    context:  numbered blocks fed to the LLM so it can cite "Източник N".
+    context:  numbered blocks fed to the LLM so it can cite "Source N".
     sources:  structured list shown to the user under the answer.
     contexts: the full text of each retrieved chunk, one per item, used by
               evaluation (Ragas) which needs per-chunk retrieved contexts.
@@ -114,7 +114,7 @@ def format_context(results: list[Result]) -> tuple[str, list[dict], list[str]]:
         else:
             doc, score = result, None
 
-        context_parts.append(f"[Източник {i}]\n{doc.page_content}")
+        context_parts.append(f"[Source {i}]\n{doc.page_content}")
         contexts.append(doc.page_content)
 
         sources.append(

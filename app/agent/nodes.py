@@ -40,6 +40,15 @@ def _lang_directive(text: str) -> str:
     return "IMPORTANT: Answer in English."
 
 
+def _is_bg(state: AgentState) -> bool:
+    """True if the user's question is in Bulgarian (Cyrillic script).
+
+    Used to serve canned messages (no-context, elaboration fallbacks) in the
+    same language the user is speaking, on both the demo and MobiSystems apps.
+    """
+    return _script(_user_question(state)) == "cyrillic"
+
+
 class GradeDocuments(BaseModel):
     """Structured verdict on whether the context answers the question."""
 
@@ -74,7 +83,7 @@ _ANSWER_PROMPT = ChatPromptTemplate.from_messages(
             "предоставения контекст. ВИНАГИ отговаряй на СЪЩИЯ език, на "
             "който е зададен въпросът, дори ако контекстът е на друг език — "
             "в такъв случай преведи нужната информация. "
-            "Цитирай източниците като [Източник N], когато ги ползваш. "
+            "Цитирай източниците като [Source N], когато ги ползваш. "
             "Ако контекстът не съдържа отговора, честно кажи, че нямаш "
             "информация по въпроса. Не измисляй.",
         ),
@@ -249,27 +258,53 @@ def elaborate(state: AgentState) -> AgentState:
     else:
         count = 1
 
+    bg = _is_bg(state)
+
     # Stuck on the same point too many times: stop rephrasing, show the
     # raw source text instead of looping on variations.
     if count > MAX_CLARIFY_REPEATS:
         context = state.get("context", "").strip()
-        answer = (
-            "Изглежда обяснението ми не помага. Ето точния текст от "
-            f"документа, за да прецените сами:\n\n{context}"
-            if context
-            else "Изглежда не мога да поясня това по-добре. Опитайте да "
-            "формулирате въпроса по друг начин или се свържете с поддръжка."
-        )
+        if context:
+            answer = (
+                (
+                    "Изглежда обяснението ми не помага. Ето точния текст от "
+                    f"документа, за да прецените сами:\n\n{context}"
+                )
+                if bg
+                else (
+                    "My explanation doesn't seem to be helping. Here is the "
+                    f"exact text from the document so you can judge for "
+                    f"yourself:\n\n{context}"
+                )
+            )
+        else:
+            answer = (
+                "Изглежда не мога да поясня това по-добре. Опитайте да "
+                "формулирате въпроса по друг начин или се свържете с поддръжка."
+                if bg
+                else "I can't seem to explain this any better. Try rephrasing "
+                "your question or contact support."
+            )
     elif not result.confident:
         answer = (
             "Не съм сигурен как да поясня това по-точно, без риск от "
             "подвеждаща информация. Мога да покажа точния текст от "
             "документа или да опитам друг въпрос."
+            if bg
+            else "I'm not sure how to clarify this more precisely without "
+            "risking misleading information. I can show the exact text from "
+            "the document or try another question."
         )
     elif result.used_general_knowledge:
+        note = (
+            "(Забележка: това пояснение е от обща култура, не от документа.)"
+            if bg
+            else "(Note: this clarification comes from general knowledge, "
+            "not from the document.)"
+        )
         answer = (
             f"{result.explanation}\n\n"
-            "(Забележка: това пояснение е от обща култура, не от документа.)"
+            f"{note}"
         )
     else:
         answer = result.explanation
@@ -369,6 +404,9 @@ def respond_no_context(state: AgentState) -> AgentState:
     msg = (
         "Нямам достатъчно информация в наличните документи, за да "
         "отговоря на този въпрос."
+        if _is_bg(state)
+        else "I don't have enough information in the available documents to "
+        "answer this question."
     )
     return {"generation": msg}
 
