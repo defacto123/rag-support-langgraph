@@ -16,8 +16,17 @@ import streamlit as st
 
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8010")
 
+# Feature flags (default = original behaviour: upload enabled, generic title).
+# A pre-indexed deployment (e.g. MobiSystems KB) sets DISABLE_UPLOAD=true and
+# a custom title, turning the app into a chat-only assistant.
+DISABLE_UPLOAD = os.getenv("DISABLE_UPLOAD", "false").lower() == "true"
+APP_TITLE = os.getenv("APP_TITLE", "Твоят документен асистент")
+APP_SUBTITLE = os.getenv(
+    "APP_SUBTITLE", "Задай въпрос — отговарям само на база твоите документи."
+)
+
 st.set_page_config(
-    page_title="Document Assistant",
+    page_title=APP_TITLE,
     page_icon="📄",
     layout="centered",
     initial_sidebar_state="expanded",
@@ -144,38 +153,42 @@ if "thread_id" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- Sidebar: document upload + controls ---
+# --- Sidebar: document upload (optional) + controls ---
 with st.sidebar:
-    st.markdown("## 📎 Документи")
-    st.caption("Качи файл, за да разшириш знанието на асистента.")
+    if not DISABLE_UPLOAD:
+        st.markdown("## 📎 Документи")
+        st.caption("Качи файл, за да разшириш знанието на асистента.")
 
-    uploaded = st.file_uploader(
-        "PDF, TXT, MD или DOCX",
-        type=["pdf", "txt", "md", "docx"],
-        label_visibility="collapsed",
-    )
-    if uploaded is not None and st.button("Индексирай документа", use_container_width=True):
-        with st.spinner("Обработвам документа…"):
-            try:
-                resp = requests.post(
-                    f"{API_URL}/upload",
-                    files={"file": (uploaded.name, uploaded.getvalue())},
-                    timeout=120,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                st.toast(f"{data['file']} е индексиран успешно", icon="✅")
-                st.success(
-                    f"**Готово! Документът е запазен и индексиран.**\n\n"
-                    f"- Файл: `{data['file']}`\n"
-                    f"- Части (chunks): **{data['chunks']}**\n"
-                    f"- Тип разбиване: `{data['doc_type']}`\n\n"
-                    f"Вече можеш да задаваш въпроси за него."
-                )
-            except requests.RequestException as exc:
-                st.error(f"Грешка при качване: {exc}")
+        uploaded = st.file_uploader(
+            "PDF, TXT, MD или DOCX",
+            type=["pdf", "txt", "md", "docx"],
+            label_visibility="collapsed",
+        )
+        if uploaded is not None and st.button(
+            "Индексирай документа", use_container_width=True
+        ):
+            with st.spinner("Обработвам документа…"):
+                try:
+                    resp = requests.post(
+                        f"{API_URL}/upload",
+                        files={"file": (uploaded.name, uploaded.getvalue())},
+                        timeout=120,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    st.toast(f"{data['file']} е индексиран успешно", icon="✅")
+                    st.success(
+                        f"**Готово! Документът е запазен и индексиран.**\n\n"
+                        f"- Файл: `{data['file']}`\n"
+                        f"- Части (chunks): **{data['chunks']}**\n"
+                        f"- Тип разбиване: `{data['doc_type']}`\n\n"
+                        f"Вече можеш да задаваш въпроси за него."
+                    )
+                except requests.RequestException as exc:
+                    st.error(f"Грешка при качване: {exc}")
 
-    st.divider()
+        st.divider()
+
     if st.button("Нов разговор", use_container_width=True):
         st.session_state.thread_id = str(uuid.uuid4())
         st.session_state.messages = []
@@ -183,10 +196,10 @@ with st.sidebar:
 
 # --- Header ---
 st.markdown(
-    """
+    f"""
     <div class="hero">
-      <h1>Твоят документен асистент</h1>
-      <p>Задай въпрос — отговарям само на база твоите документи.</p>
+      <h1>{APP_TITLE}</h1>
+      <p>{APP_SUBTITLE}</p>
     </div>
     """,
     unsafe_allow_html=True,

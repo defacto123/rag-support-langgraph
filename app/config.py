@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Empty locally; required by Qdrant Cloud (managed) in production.
     qdrant_api_key: str = ""
 
+    # --- Feature flags ---
+    # A pre-indexed deployment (chat-only KB) sets this to disable uploads.
+    disable_upload: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
