@@ -27,25 +27,27 @@ APP_SUBTITLE = os.getenv(
 
 st.set_page_config(
     page_title=APP_TITLE,
-    page_icon="📄",
+    page_icon="💬",
     layout="centered",
     initial_sidebar_state="expanded",
 )
 
-# --- Warm, minimalist theme (soft lines, warm palette) ---
+# --- MobiSystems theme (blue-on-white, clean & modern, matches mobisystems.com) ---
 st.markdown(
     """
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
       :root {
-        --bg:        #FBF7F2;
-        --surface:   #FFFFFF;
-        --primary:   #E07A5F;
-        --primary-2: #F2A488;
-        --text:      #3D3A36;
-        --muted:     #9C948B;
-        --border:    #EFE7DD;
+        --bg:          #F5F8FC;
+        --surface:     #FFFFFF;
+        --primary:     #038FF3;
+        --primary-2:   #00AFFF;
+        --primary-dark:#226ECF;
+        --heading:     #243278;
+        --text:        #313131;
+        --muted:       #5B5B5B;
+        --border:      #E6E6E6;
       }
 
       .stApp { background: var(--bg); }
@@ -55,22 +57,67 @@ st.markdown(
       #MainMenu, footer, header { visibility: hidden; }
       .block-container { padding-top: 2.5rem; padding-bottom: 7rem; max-width: 760px; }
 
-      /* Hero header */
-      .hero { text-align: center; margin-bottom: 1.75rem; }
-      .hero h1 {
-        font-size: 2rem; font-weight: 700; letter-spacing: -0.02em;
-        margin: 0; color: var(--text);
-      }
-      .hero p { color: var(--muted); margin: 0.35rem 0 0; font-size: 0.95rem; }
-
-      /* Chat bubbles */
-      [data-testid="stChatMessage"] {
+      /* Mobi widget top bar (logo + name + subtitle) */
+      .mobi-topbar {
+        display: flex; align-items: center; gap: 0.7rem;
         background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: 18px;
-        padding: 0.35rem 0.35rem;
-        box-shadow: 0 2px 12px rgba(224, 122, 95, 0.06);
-        margin-bottom: 0.6rem;
+        border-radius: 16px;
+        padding: 0.7rem 0.9rem;
+        margin-bottom: 1.1rem;
+        box-shadow: 0 2px 12px rgba(3, 143, 243, 0.06);
+      }
+      .mobi-logo {
+        width: 36px; height: 36px; flex: 0 0 36px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, #F0483E, #C40E0E);
+        color: #fff; font-weight: 800; font-size: 1.15rem;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 2px 6px rgba(196, 14, 14, 0.35);
+      }
+      .mobi-titles { line-height: 1.2; }
+      .mobi-name { font-weight: 700; color: var(--heading); font-size: 1rem; }
+      .mobi-sub  { color: var(--muted); font-size: 0.8rem; margin-top: 1px; }
+
+      /* Meta line under assistant replies (e.g. "Mobi · AI Agent · Just now") */
+      .mobi-meta {
+        color: var(--muted); font-size: 0.75rem;
+        margin: -0.35rem 0 0.7rem 0.2rem;
+      }
+
+      /* Chat bubbles — hide avatars, use aligned coloured bubbles like the widget */
+      [data-testid="stChatMessageAvatarUser"],
+      [data-testid="stChatMessageAvatarAssistant"] { display: none !important; }
+
+      [data-testid="stChatMessage"] {
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        margin-bottom: 0.5rem;
+      }
+      /* the inner content wrapper becomes the actual bubble */
+      [data-testid="stChatMessage"] > div:last-child {
+        border-radius: 16px;
+        padding: 0.7rem 0.95rem;
+        max-width: 82%;
+        width: fit-content;
+      }
+      /* Assistant: light-grey bubble, left aligned */
+      [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) > div:last-child {
+        background: #F1F3F4;
+        color: var(--text);
+        margin-right: auto;
+      }
+      /* User: brand-blue bubble, right aligned, white text */
+      [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) > div:last-child {
+        background: var(--primary);
+        margin-left: auto;
+      }
+      [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) p,
+      [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) li,
+      [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) span {
+        color: #ffffff !important;
       }
 
       /* Chat input bar — lift it and make it clearly a text field */
@@ -83,10 +130,10 @@ st.markdown(
       [data-testid="stChatInput"] textarea {
         color: var(--text) !important;
         font-size: 1rem !important;
-        border-radius: 16px !important;
+        border-radius: 14px !important;
         border: 1.5px solid var(--primary-2) !important;
         background: var(--surface) !important;
-        box-shadow: 0 4px 16px rgba(224, 122, 95, 0.10) !important;
+        box-shadow: 0 4px 16px rgba(3, 143, 243, 0.10) !important;
       }
       [data-testid="stChatInput"] textarea::placeholder {
         color: var(--muted) !important;
@@ -94,16 +141,28 @@ st.markdown(
       }
       [data-testid="stChatInput"] textarea:focus {
         border-color: var(--primary) !important;
-        box-shadow: 0 0 0 3px rgba(242, 164, 136, 0.30) !important;
+        box-shadow: 0 0 0 3px rgba(0, 175, 255, 0.30) !important;
       }
-      /* Send icon inside chat input */
-      [data-testid="stChatInputSubmitButton"] { color: var(--primary) !important; }
+      /* Send button — circular blue like the Mobi widget */
+      [data-testid="stChatInputSubmitButton"] {
+        background: var(--primary) !important;
+        color: #ffffff !important;
+        border-radius: 50% !important;
+        width: 2.1rem !important; height: 2.1rem !important;
+      }
+      [data-testid="stChatInputSubmitButton"]:disabled {
+        background: #C9D3DE !important;
+        color: #ffffff !important;
+      }
+      [data-testid="stChatInputSubmitButton"]:hover:not(:disabled) {
+        background: var(--primary-dark) !important;
+      }
 
       /* Buttons — keep text readable in every state (incl. inner span/p) */
       .stButton button, .stDownloadButton button {
         background-color: var(--primary) !important;
         border: 1px solid var(--primary) !important;
-        border-radius: 14px; padding: 0.55rem 1.1rem; font-weight: 600;
+        border-radius: 12px; padding: 0.55rem 1.1rem; font-weight: 600;
         transition: all 0.15s ease;
       }
       .stButton button p, .stButton button span, .stButton button div,
@@ -113,10 +172,10 @@ st.markdown(
       .stButton button:hover, .stDownloadButton button:hover,
       .stButton button:focus, .stButton button:active,
       .stButton button:focus:not(:active) {
-        background-color: #C55F45 !important;
-        border-color: #C55F45 !important;
+        background-color: var(--primary-dark) !important;
+        border-color: var(--primary-dark) !important;
         transform: translateY(-1px);
-        box-shadow: 0 4px 14px rgba(224, 122, 95, 0.30) !important;
+        box-shadow: 0 4px 14px rgba(3, 143, 243, 0.30) !important;
       }
       .stButton button:hover p, .stButton button:hover span, .stButton button:hover div,
       .stButton button:focus p, .stButton button:focus span,
@@ -126,11 +185,11 @@ st.markdown(
 
       /* Sidebar */
       [data-testid="stSidebar"] { background: var(--surface); border-right: 1px solid var(--border); }
-      [data-testid="stSidebar"] h2 { font-size: 1.05rem; font-weight: 700; }
+      [data-testid="stSidebar"] h2 { font-size: 1.05rem; font-weight: 700; color: var(--heading); }
 
       /* Source chips */
       .source-card {
-        background: #FCF3EE; border: 1px solid var(--border);
+        background: #EEF6FF; border: 1px solid var(--border);
         border-radius: 12px; padding: 0.6rem 0.8rem; margin-bottom: 0.5rem;
         font-size: 0.85rem; color: var(--text);
       }
@@ -139,7 +198,7 @@ st.markdown(
 
       /* File uploader */
       [data-testid="stFileUploaderDropzone"] {
-        background: #FCF3EE; border: 1.5px dashed var(--primary-2);
+        background: #EEF6FF; border: 1.5px dashed var(--primary-2);
         border-radius: 14px;
       }
     </style>
@@ -194,41 +253,69 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- Header ---
+# --- Header: Mobi widget top bar ---
 st.markdown(
-    f"""
-    <div class="hero">
-      <h1>{APP_TITLE}</h1>
-      <p>{APP_SUBTITLE}</p>
+    """
+    <div class="mobi-topbar">
+      <div class="mobi-logo">M</div>
+      <div class="mobi-titles">
+        <div class="mobi-name">Mobi</div>
+        <div class="mobi-sub">AI Agent • The team can also help</div>
+      </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
+
+def _assistant_meta() -> None:
+    """Small identity line shown under each assistant reply (widget style)."""
+    st.markdown(
+        '<div class="mobi-meta">Mobi &bull; AI Agent &bull; Just now</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_sources(sources: list) -> None:
+    with st.expander("Sources"):
+        for s in sources:
+            st.markdown(
+                f"""
+                <div class="source-card">
+                  <span class="src-name">[{s['index']}] {s['source']}</span>
+                  <div class="src-preview">{s['preview']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+# --- Welcome greeting (display-only; not part of the model context) ---
+with st.chat_message("assistant"):
+    st.markdown(
+        "Hi there! You're speaking with **Mobi AI Agent**.\n\n"
+        "I can help you find answers and get support for:\n\n"
+        "- MobiOffice\n- MobiPDF\n- MobiDrive\n\n"
+        "How can I assist you today?"
+    )
+_assistant_meta()
+
 # --- Render chat history ---
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"], avatar="🧑" if msg["role"] == "user" else "📄"):
+    with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg.get("sources"):
-            with st.expander("Sources"):
-                for s in msg["sources"]:
-                    st.markdown(
-                        f"""
-                        <div class="source-card">
-                          <span class="src-name">[{s['index']}] {s['source']}</span>
-                          <div class="src-preview">{s['preview']}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+            _render_sources(msg["sources"])
+    if msg["role"] == "assistant":
+        _assistant_meta()
 
 # --- Chat input ---
-if prompt := st.chat_input("Type your question…"):
+if prompt := st.chat_input("Message…"):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="🧑"):
+    with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant", avatar="📄"):
+    with st.chat_message("assistant"):
         with st.spinner("Thinking…"):
             try:
                 resp = requests.post(
@@ -246,17 +333,8 @@ if prompt := st.chat_input("Type your question…"):
 
         st.markdown(answer)
         if sources:
-            with st.expander("Sources"):
-                for s in sources:
-                    st.markdown(
-                        f"""
-                        <div class="source-card">
-                          <span class="src-name">[{s['index']}] {s['source']}</span>
-                          <div class="src-preview">{s['preview']}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+            _render_sources(sources)
+    _assistant_meta()
 
     st.session_state.messages.append(
         {"role": "assistant", "content": answer, "sources": sources}
