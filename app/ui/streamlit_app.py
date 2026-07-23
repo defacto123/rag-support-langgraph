@@ -8,8 +8,10 @@ Run with:
   streamlit run app/ui/streamlit_app.py
 """
 
+import base64
 import os
 import uuid
+from pathlib import Path
 
 import requests
 import streamlit as st
@@ -24,10 +26,31 @@ APP_TITLE = os.getenv("APP_TITLE", "Your Document Assistant")
 APP_SUBTITLE = os.getenv(
     "APP_SUBTITLE", "Ask a question — I answer only from your documents."
 )
+# Source metadata is hidden from users by default; flip this on to show the
+# Sources expander when debugging retrieval.
+SHOW_SOURCES = os.getenv("SHOW_SOURCES", "false").lower() == "true"
+
+# --- Brand assets (bundled in the image so they deploy with the app) ---
+_ASSETS = Path(__file__).parent / "assets"
+_ICON_PATH = _ASSETS / "mobi_icon.jpg"
+_LOGO_PATH = _ASSETS / "mobi_logo.png"
+
+
+def _data_uri(path: Path, mime: str) -> str:
+    """Base64 data URI so an image can be embedded directly in custom HTML."""
+    try:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:{mime};base64,{encoded}"
+    except OSError:
+        return ""
+
+
+_ICON_URI = _data_uri(_ICON_PATH, "image/jpeg")
+_LOGO_URI = _data_uri(_LOGO_PATH, "image/png")
 
 st.set_page_config(
     page_title=APP_TITLE,
-    page_icon="💬",
+    page_icon=str(_ICON_PATH) if _ICON_PATH.exists() else "💬",
     layout="centered",
     initial_sidebar_state="expanded",
 )
@@ -75,8 +98,16 @@ st.markdown(
         display: flex; align-items: center; justify-content: center;
         box-shadow: 0 2px 6px rgba(196, 14, 14, 0.35);
       }
+      /* Actual brand icon (red "M") used in the header top bar */
+      .mobi-logo-img {
+        width: 38px; height: 38px; flex: 0 0 38px;
+        border-radius: 9px; object-fit: cover;
+        box-shadow: 0 2px 6px rgba(196, 14, 14, 0.35);
+      }
       .mobi-titles { line-height: 1.2; }
       .mobi-name { font-weight: 700; color: var(--heading); font-size: 1rem; }
+      /* MobiSystems wordmark image */
+      .mobi-wordmark { height: 20px; display: block; margin-bottom: 2px; }
       .mobi-sub  { color: var(--muted); font-size: 0.8rem; margin-top: 1px; }
 
       /* Meta line under assistant replies (e.g. "Mobi · AI Agent · Just now") */
@@ -88,12 +119,13 @@ st.markdown(
       /* "Agent is typing…" indicator — three bouncing dots (replaces the
          plain "Thinking…" spinner while we wait for the backend reply) */
       .typing-indicator {
-        display: inline-flex; align-items: center; gap: 5px;
-        padding: 4px 2px;
+        display: flex; align-items: center; gap: 5px;
+        height: 1.4rem;              /* give the dots a line box to centre in */
       }
       .typing-indicator span {
         width: 8px; height: 8px; border-radius: 50%;
         background: var(--muted); display: inline-block;
+        vertical-align: middle;
         animation: mobi-typing 1.2s infinite ease-in-out both;
       }
       .typing-indicator span:nth-child(1) { animation-delay: -0.24s; }
@@ -153,6 +185,9 @@ st.markdown(
         border: 1.5px solid var(--primary-2) !important;
         background: var(--surface) !important;
         box-shadow: 0 4px 16px rgba(3, 143, 243, 0.10) !important;
+        /* breathing room so text/placeholder isn't glued to the frame */
+        padding: 0.6rem 0.95rem !important;
+        line-height: 1.4 !important;
       }
       [data-testid="stChatInput"] textarea::placeholder {
         color: var(--muted) !important;
@@ -233,6 +268,12 @@ if "messages" not in st.session_state:
 
 # --- Sidebar: document upload (optional) + controls ---
 with st.sidebar:
+    if _LOGO_URI:
+        st.markdown(
+            f'<img src="{_LOGO_URI}" alt="MobiSystems" '
+            f'style="height:26px;margin:0.1rem 0 1rem;"/>',
+            unsafe_allow_html=True,
+        )
     if not DISABLE_UPLOAD:
         st.markdown("## 📎 Documents")
         st.caption("Upload a file to expand the assistant's knowledge.")
@@ -272,13 +313,23 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- Header: Mobi widget top bar ---
+# --- Header: Mobi widget top bar (uses brand assets, falls back to text) ---
+_icon_html = (
+    f'<img class="mobi-logo-img" src="{_ICON_URI}" alt="Mobi"/>'
+    if _ICON_URI
+    else '<div class="mobi-logo">M</div>'
+)
+_name_html = (
+    f'<img class="mobi-wordmark" src="{_LOGO_URI}" alt="MobiSystems"/>'
+    if _LOGO_URI
+    else '<div class="mobi-name">Mobi</div>'
+)
 st.markdown(
-    """
+    f"""
     <div class="mobi-topbar">
-      <div class="mobi-logo">M</div>
+      {_icon_html}
       <div class="mobi-titles">
-        <div class="mobi-name">Mobi</div>
+        {_name_html}
         <div class="mobi-sub">AI Agent • The team can also help</div>
       </div>
     </div>
@@ -329,7 +380,7 @@ _assistant_meta()
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if msg.get("sources"):
+        if SHOW_SOURCES and msg.get("sources"):
             _render_sources(msg["sources"])
     if msg["role"] == "assistant":
         _assistant_meta()
@@ -359,7 +410,7 @@ if prompt := st.chat_input("Message…"):
             sources = []
 
         placeholder.markdown(answer)
-        if sources:
+        if SHOW_SOURCES and sources:
             _render_sources(sources)
     _assistant_meta()
 
