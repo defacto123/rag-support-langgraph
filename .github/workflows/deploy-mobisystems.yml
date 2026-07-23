@@ -9,7 +9,12 @@ on:
   workflow_dispatch:
 
 env:
-  REGION: europe-west2
+  # Artifact Registry lives in europe-west2; keep building/pushing there.
+  REGISTRY_REGION: europe-west2
+  # Cloud Run services are deployed to europe-west1 so we can use the free
+  # Cloud Run custom-domain mapping (not available in europe-west2). Cross-region
+  # image pulls within the same project are supported.
+  RUN_REGION: europe-west1
   REPO: rag
   IMAGE_NAME: app
 
@@ -31,11 +36,11 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
 
       - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+        run: gcloud auth configure-docker ${{ env.REGISTRY_REGION }}-docker.pkg.dev --quiet
 
       - name: Build & push image
         run: |
-          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          IMAGE="${{ env.REGISTRY_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
@@ -45,7 +50,7 @@ jobs:
         run: |
           gcloud run deploy mobi-api \
             --image "$IMAGE" \
-            --region "$REGION" \
+            --region "$RUN_REGION" \
             --platform managed \
             --allow-unauthenticated \
             --service-account "${{ secrets.GCP_RUNTIME_SA }}" \
@@ -54,7 +59,7 @@ jobs:
 
       - name: Resolve API URL
         run: |
-          API_URL=$(gcloud run services describe mobi-api --region "$REGION" --format='value(status.url)')
+          API_URL=$(gcloud run services describe mobi-api --region "$RUN_REGION" --format='value(status.url)')
           echo "API_URL=$API_URL" >> "$GITHUB_ENV"
 
       # UI runs Streamlit with upload hidden and a MobiSystems-branded title.
@@ -64,7 +69,7 @@ jobs:
         run: |
           gcloud run deploy mobi-ui \
             --image "$IMAGE" \
-            --region "$REGION" \
+            --region "$RUN_REGION" \
             --platform managed \
             --allow-unauthenticated \
             --service-account "${{ secrets.GCP_RUNTIME_SA }}" \
@@ -76,4 +81,4 @@ jobs:
       - name: Output live URLs
         run: |
           echo "MobiSystems API: $API_URL"
-          echo "MobiSystems UI:  $(gcloud run services describe mobi-ui --region "$REGION" --format='value(status.url)')"
+          echo "MobiSystems UI:  $(gcloud run services describe mobi-ui --region "$RUN_REGION" --format='value(status.url)')"
