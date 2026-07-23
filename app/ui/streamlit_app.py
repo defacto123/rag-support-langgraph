@@ -106,8 +106,8 @@ st.markdown(
       }
       .mobi-titles { line-height: 1.2; }
       .mobi-name { font-weight: 700; color: var(--heading); font-size: 1rem; }
-      /* MobiSystems wordmark image */
-      .mobi-wordmark { height: 20px; display: block; margin-bottom: 2px; }
+      /* MobiSystems wordmark image (sole header logo) */
+      .mobi-wordmark { height: 24px; display: block; margin-bottom: 3px; }
       .mobi-sub  { color: var(--muted); font-size: 0.8rem; margin-top: 1px; }
 
       /* Meta line under assistant replies (e.g. "Mobi · AI Agent · Just now") */
@@ -119,13 +119,14 @@ st.markdown(
       /* "Agent is typing…" indicator — three bouncing dots (replaces the
          plain "Thinking…" spinner while we wait for the backend reply) */
       .typing-indicator {
-        display: flex; align-items: center; gap: 5px;
-        height: 1.4rem;              /* give the dots a line box to centre in */
+        display: flex; align-items: center; justify-content: flex-start;
+        gap: 5px; line-height: 1;
+        min-height: 1.1rem;          /* stable line box for vertical centring */
+        padding: 3px 0;              /* keep dots off the bubble's top/bottom edge */
       }
       .typing-indicator span {
         width: 8px; height: 8px; border-radius: 50%;
-        background: var(--muted); display: inline-block;
-        vertical-align: middle;
+        background: var(--muted); flex: 0 0 auto;
         animation: mobi-typing 1.2s infinite ease-in-out both;
       }
       .typing-indicator span:nth-child(1) { animation-delay: -0.24s; }
@@ -313,12 +314,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- Header: Mobi widget top bar (uses brand assets, falls back to text) ---
-_icon_html = (
-    f'<img class="mobi-logo-img" src="{_ICON_URI}" alt="Mobi"/>'
-    if _ICON_URI
-    else '<div class="mobi-logo">M</div>'
-)
+# --- Header: Mobi widget top bar (single brand lockup, text fallback) ---
 _name_html = (
     f'<img class="mobi-wordmark" src="{_LOGO_URI}" alt="MobiSystems"/>'
     if _LOGO_URI
@@ -327,7 +323,6 @@ _name_html = (
 st.markdown(
     f"""
     <div class="mobi-topbar">
-      {_icon_html}
       <div class="mobi-titles">
         {_name_html}
         <div class="mobi-sub">AI Agent • The team can also help</div>

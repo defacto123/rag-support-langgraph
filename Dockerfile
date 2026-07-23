@@ -18,6 +18,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Application code and Streamlit theme.
 COPY app ./app
 COPY .streamlit ./.streamlit
+COPY scripts/brand_streamlit.py ./scripts/brand_streamlit.py
+
+# Brand Streamlit's served HTML so shared links unfurl as MobiHelp instead of
+# Streamlit. Link-preview crawlers read the static HTML before JS runs, so we
+# bake the title, favicon and Open Graph/Twitter tags into index.html at build
+# time. Only affects the UI service (the API doesn't serve this HTML).
+ARG PUBLIC_BASE_URL=https://mobisystems.help
+ENV PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+RUN python scripts/brand_streamlit.py
 
 # Cloud Run injects $PORT (usually 8080); locally we default to 8000. Shell
 # form is required so ${PORT} is expanded at runtime. This is the API service;
