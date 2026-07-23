@@ -6,6 +6,8 @@ Endpoints:
   POST /chat    -> ask a question; returns answer + sources
 """
 
+import logging
+import re
 import shutil
 from pathlib import Path
 
@@ -16,7 +18,14 @@ from app.agent.graph import ask
 from app.config import settings
 from app.ingestion.pipeline import ingest_document
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="AI Document Assistant")
+
+# Strips stray inline citation markers (e.g. "[Source 1]", "[Източник 2]")
+# from the answer text. Citations are intentionally hidden from users; the
+# source data is kept in the logs for debugging instead.
+_CITATION_RE = re.compile(r"\s*\[(?:Source|Източник)\s*\d+\]", re.IGNORECASE)
 
 # Where uploaded files are stored before ingestion.
 _UPLOAD_DIR = Path("data/uploads")
@@ -54,6 +63,21 @@ async def upload(file: UploadFile = File(...)) -> dict:
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
-    """Run the agent for one conversation turn."""
+    """Run the agent for one conversation turn.
+
+    Source metadata is not shown to the user; it is logged here for
+    debugging and the answer is cleaned of any inline citation markers.
+    """
     result = ask(request.question, thread_id=request.thread_id)
-    return ChatResponse(answer=result["answer"], sources=result["sources"])
+
+    # Keep retrieval provenance available for debugging (logs only).
+    logger.info(
+        "chat thread=%s sources=%s",
+        request.thread_id,
+        result.get("sources", []),
+    )
+    logger.debug("chat thread=%s contexts=%s", request.thread_id,
+                 result.get("contexts", []))
+
+    answer = _CITATION_RE.sub("", result["answer"]).strip()
+    return ChatResponse(answer=answer, sources=result["sources"])

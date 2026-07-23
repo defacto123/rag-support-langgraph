@@ -4,6 +4,7 @@ Each node is a function `(state) -> partial state`. Nodes never mutate the
 incoming state in place; they return only the keys they changed.
 """
 
+import logging
 from typing import Literal
 
 from langchain_core.messages import AIMessage
@@ -14,6 +15,8 @@ from app.agent.state import AgentState
 from app.config import settings
 from app.models import get_llm
 from app.retrieval.search import _script, search
+
+logger = logging.getLogger(__name__)
 
 
 def _user_question(state: AgentState) -> str:
@@ -99,7 +102,8 @@ _ANSWER_PROMPT = ChatPromptTemplate.from_messages(
             "предоставения контекст. ВИНАГИ отговаряй на СЪЩИЯ език, на "
             "който е зададен въпросът, дори ако контекстът е на друг език — "
             "в такъв случай преведи нужната информация. "
-            "Цитирай източниците като [Source N], когато ги ползваш. "
+            "НЕ цитирай източници и НЕ добавяй маркери като [Source N] в "
+            "отговора. "
             "Ако контекстът не съдържа отговора, честно кажи, че нямаш "
             "информация по въпроса. Не измисляй.",
         ),
@@ -334,16 +338,13 @@ def elaborate(state: AgentState) -> AgentState:
             "the document or try another question."
         )
     elif result.used_general_knowledge:
-        note = (
-            "(Забележка: това пояснение е от обща култура, не от документа.)"
-            if bg
-            else "(Note: this clarification comes from general knowledge, "
-            "not from the document.)"
+        # Signal kept for debugging/logs only — not surfaced to the user.
+        logger.info(
+            "elaborate used general knowledge (not from documents) for "
+            "question: %r",
+            state.get("question", ""),
         )
-        answer = (
-            f"{result.explanation}\n\n"
-            f"{note}"
-        )
+        answer = result.explanation
     else:
         answer = result.explanation
 
