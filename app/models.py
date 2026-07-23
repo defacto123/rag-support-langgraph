@@ -12,12 +12,28 @@ from langchain_google_genai import (
 from app.config import settings
 
 
-def get_llm(temperature: float = 0.0) -> ChatGoogleGenerativeAI:
-    """Return the chat model. temperature=0 -> deterministic answers."""
+def get_llm(
+    temperature: float = 0.0,
+    thinking_budget: int | None = None,
+) -> ChatGoogleGenerativeAI:
+    """Return the chat model.
+
+    temperature=0 -> deterministic answers.
+
+    thinking_budget controls Gemini 2.5's internal "thinking" tokens:
+      - None  -> model default (used for the final answer, to keep quality).
+      - 0     -> thinking disabled. Use for simple, mechanical calls
+                 (routing, grading, query rewriting/contextualising), where
+                 chain-of-thought adds latency and cost but no real value.
+    """
+    kwargs: dict = {}
+    if thinking_budget is not None:
+        kwargs["thinking_budget"] = thinking_budget
     return ChatGoogleGenerativeAI(
         model=settings.llm_model,
         google_api_key=settings.google_api_key,
         temperature=temperature,
+        **kwargs,
     )
 
 

@@ -17,6 +17,7 @@ from app.agent.nodes import (
     generate_direct,
     grade_answer,
     grade_documents,
+    respond_closing,
     respond_no_context,
     retrieve,
     rewrite,
@@ -47,6 +48,8 @@ def decide_route(state: AgentState) -> str:
         return "retrieve"
     if intent == "clarify":
         return "elaborate"
+    if intent == "closing":
+        return "respond_closing"
     return "generate_direct"
 
 
@@ -70,6 +73,7 @@ def build_graph():
 
     builder.add_node("route", route)
     builder.add_node("generate_direct", generate_direct)
+    builder.add_node("respond_closing", respond_closing)
     builder.add_node("elaborate", elaborate)
     builder.add_node("retrieve", retrieve)
     builder.add_node("grade_documents", grade_documents)
@@ -86,10 +90,12 @@ def build_graph():
         {
             "retrieve": "retrieve",
             "elaborate": "elaborate",
+            "respond_closing": "respond_closing",
             "generate_direct": "generate_direct",
         },
     )
     builder.add_edge("generate_direct", "finalize")
+    builder.add_edge("respond_closing", "finalize")
     builder.add_edge("elaborate", "finalize")
     builder.add_edge("retrieve", "grade_documents")
     builder.add_conditional_edges(

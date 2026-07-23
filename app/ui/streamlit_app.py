@@ -85,6 +85,25 @@ st.markdown(
         margin: -0.35rem 0 0.7rem 0.2rem;
       }
 
+      /* "Agent is typing…" indicator — three bouncing dots (replaces the
+         plain "Thinking…" spinner while we wait for the backend reply) */
+      .typing-indicator {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 4px 2px;
+      }
+      .typing-indicator span {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: var(--muted); display: inline-block;
+        animation: mobi-typing 1.2s infinite ease-in-out both;
+      }
+      .typing-indicator span:nth-child(1) { animation-delay: -0.24s; }
+      .typing-indicator span:nth-child(2) { animation-delay: -0.12s; }
+      .typing-indicator span:nth-child(3) { animation-delay: 0s; }
+      @keyframes mobi-typing {
+        0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+        40%           { transform: scale(1);   opacity: 1;   }
+      }
+
       /* Chat bubbles — hide avatars, use aligned coloured bubbles like the widget */
       [data-testid="stChatMessageAvatarUser"],
       [data-testid="stChatMessageAvatarAssistant"] { display: none !important; }
@@ -276,6 +295,12 @@ def _assistant_meta() -> None:
     )
 
 
+# Animated "typing" bubble shown while the backend is composing the reply.
+_TYPING_HTML = (
+    '<div class="typing-indicator"><span></span><span></span><span></span></div>'
+)
+
+
 def _render_sources(sources: list) -> None:
     with st.expander("Sources"):
         for s in sources:
@@ -316,22 +341,24 @@ if prompt := st.chat_input("Message…"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking…"):
-            try:
-                resp = requests.post(
-                    f"{API_URL}/chat",
-                    json={"question": prompt, "thread_id": st.session_state.thread_id},
-                    timeout=120,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                answer = data["answer"]
-                sources = data.get("sources", [])
-            except requests.RequestException as exc:
-                answer = f"Something went wrong connecting to the backend: {exc}"
-                sources = []
+        # Show an animated "typing…" bubble, then swap it for the real answer.
+        placeholder = st.empty()
+        placeholder.markdown(_TYPING_HTML, unsafe_allow_html=True)
+        try:
+            resp = requests.post(
+                f"{API_URL}/chat",
+                json={"question": prompt, "thread_id": st.session_state.thread_id},
+                timeout=120,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            answer = data["answer"]
+            sources = data.get("sources", [])
+        except requests.RequestException as exc:
+            answer = f"Something went wrong connecting to the backend: {exc}"
+            sources = []
 
-        st.markdown(answer)
+        placeholder.markdown(answer)
         if sources:
             _render_sources(sources)
     _assistant_meta()

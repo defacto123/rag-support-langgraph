@@ -11,6 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from app.agent.state import AgentState
+from app.config import settings
 from app.models import get_llm
 from app.retrieval.search import _script, search
 
@@ -32,12 +33,27 @@ def _lang_directive(text: str) -> str:
     """Explicit, unambiguous instruction to answer in the question's language.
 
     The prompts are written in Bulgarian, which biases the model toward
-    Bulgarian output even for English questions. Injecting a direct order
-    in the target language reliably overrides that bias.
+    Bulgarian output even for non-Bulgarian questions. Injecting a direct
+    order reliably overrides that bias.
+
+    A purely script-based rule cannot tell English from accent-free French /
+    German / Spanish, so we give the model a strong, self-detecting order to
+    answer in the user's language. We only NAME a language when we can
+    cheaply and confidently recognise it — Cyrillic text is the KB's
+    Bulgarian — and otherwise fall back to the generic order rather than
+    forcing (and possibly mis-guessing) English.
+    This fixes cases where a non-English question was answered in English, or
+    a question was answered in Bulgarian due to the Bulgarian prompt bias.
     """
+    base = (
+        "IMPORTANT: Detect the language of the user's message and write your "
+        "ENTIRE reply in that SAME language. Do NOT default to Bulgarian or "
+        "English when the user wrote in another language."
+    )
     if _script(text) == "cyrillic":
-        return "ВАЖНО: Отговори на български език."
-    return "IMPORTANT: Answer in English."
+        # Cyrillic in this bilingual KB context = Bulgarian.
+        return base + " The user's message is in Bulgarian; answer in Bulgarian."
+    return base
 
 
 def _is_bg(state: AgentState) -> bool:
@@ -124,12 +140,15 @@ _CONTEXTUALIZE_PROMPT = ChatPromptTemplate.from_messages(
 class RouteQuery(BaseModel):
     """Decision on how to handle the user's message."""
 
-    intent: Literal["retrieve", "direct", "clarify"] = Field(
+    intent: Literal["retrieve", "direct", "clarify", "closing"] = Field(
         description=(
             "'retrieve' for concrete questions about document content; "
             "'direct' for greetings/small talk; "
             "'clarify' when the user says they do not understand the "
-            "previous answer and asks for a clearer explanation."
+            "previous answer and asks for a clearer explanation; "
+            "'closing' when the user signals the issue is resolved or that "
+            "they are satisfied/done (e.g. 'thanks', 'that solved it', "
+            "'got it', 'no more questions', 'благодаря', 'реши се')."
         )
     )
 
@@ -145,7 +164,11 @@ _ROUTE_PROMPT = ChatPromptTemplate.from_messages(
             "- clarify: потребителят НЕ е разбрал предишния отговор и иска "
             "по-ясно обяснение (напр. 'не разбирам', 'какво значи това', "
             "'къде е това').\n"
-            "Използвай историята, за да разпознаеш follow-up и clarify.",
+            "- closing: потребителят показва, че проблемът е решен или че е "
+            "доволен/приключил (напр. 'благодаря', 'реши се', 'разбрах', "
+            "'няма повече въпроси', 'thanks', 'that solved it', 'got it').\n"
+            "Използвай историята, за да разпознаеш follow-up, clarify и "
+            "closing.",
         ),
         ("human", "История:\n{history}\n\nСъобщение: {question}"),
     ]
@@ -154,21 +177,35 @@ _ROUTE_PROMPT = ChatPromptTemplate.from_messages(
 
 def route(state: AgentState) -> AgentState:
     """Classify the message: retrieve, direct answer, or clarification."""
-    router = get_llm().with_structured_output(RouteQuery)
+    router = get_llm(thinking_budget=0).with_structured_output(RouteQuery)
     decision: RouteQuery = (_ROUTE_PROMPT | router).invoke(
         {"question": state["question"], "history": _history_text(state)}
     )
     return {"route": decision.intent}
 
 
+# The self-description depends on the deployment. A pre-indexed, chat-only
+# deployment (e.g. MobiSystems, disable_upload=true) must NOT invite the user
+# to upload documents — its knowledge is already built in. The generic app
+# (uploads enabled) keeps the original document-assistant framing.
+if settings.disable_upload:
+    _DIRECT_SYSTEM = (
+        "Ти си любезен помощник за поддръжка на продуктите на MobiSystems "
+        "(MobiOffice, MobiPDF, MobiDrive). Отговори кратко на СЪЩИЯ език, на "
+        "който пише потребителят. Ако е уместно, поясни, че можеш да "
+        "помагаш с въпроси и поддръжка относно продуктите на Mobi. НЕ "
+        "моли потребителя да качва документи."
+    )
+else:
+    _DIRECT_SYSTEM = (
+        "Ти си любезен асистент за документи. Отговори кратко на СЪЩИЯ "
+        "език, на който пише потребителят. Ако е уместно, поясни, че "
+        "можеш да отговаряш на въпроси относно качените документи."
+    )
+
 _DIRECT_PROMPT = ChatPromptTemplate.from_messages(
     [
-        (
-            "system",
-            "Ти си любезен асистент за документи. Отговори кратко на СЪЩИЯ "
-            "език, на който пише потребителят. Ако е уместно, поясни, че "
-            "можеш да отговаряш на въпроси относно качените документи.",
-        ),
+        ("system", _DIRECT_SYSTEM),
         ("human", "{lang_directive}\n\n{question}"),
     ]
 )
@@ -176,7 +213,8 @@ _DIRECT_PROMPT = ChatPromptTemplate.from_messages(
 
 def generate_direct(state: AgentState) -> AgentState:
     """Answer general/greeting questions without touching the documents."""
-    llm = get_llm(temperature=0.3)
+    # Greetings are trivial — no chain-of-thought needed, so keep it snappy.
+    llm = get_llm(temperature=0.3, thinking_budget=0)
     response = (_DIRECT_PROMPT | llm).invoke(
         {
             "question": state["question"],
@@ -321,7 +359,7 @@ def retrieve(state: AgentState) -> AgentState:
     query = state["question"]
     history = _history_text(state)
     if history:
-        llm = get_llm()
+        llm = get_llm(thinking_budget=0)
         query = (
             (_CONTEXTUALIZE_PROMPT | llm)
             .invoke({"history": history, "question": query})
@@ -344,7 +382,7 @@ def grade_documents(state: AgentState) -> AgentState:
         # Nothing retrieved -> definitely not relevant, skip the LLM call.
         return {"documents_relevant": False}
 
-    grader = get_llm().with_structured_output(GradeDocuments)
+    grader = get_llm(thinking_budget=0).with_structured_output(GradeDocuments)
     verdict: GradeDocuments = (_GRADE_PROMPT | grader).invoke(
         {"context": context, "question": state["question"]}
     )
@@ -391,7 +429,7 @@ _REWRITE_PROMPT = ChatPromptTemplate.from_messages(
 
 def rewrite(state: AgentState) -> AgentState:
     """Reformulate the question to improve retrieval, and count the attempt."""
-    llm = get_llm()
+    llm = get_llm(thinking_budget=0)
     response = (_REWRITE_PROMPT | llm).invoke({"question": state["question"]})
     return {
         "question": response.content.strip(),
@@ -409,6 +447,20 @@ def respond_no_context(state: AgentState) -> AgentState:
         "answer this question."
     )
     return {"generation": msg}
+
+
+def respond_closing(state: AgentState) -> AgentState:
+    """Warm wrap-up when the user signals the issue is resolved.
+
+    Fires only on closing/gratitude signals (routed as 'closing'), so it is
+    not appended after every answer — only once the user is satisfied/done.
+    """
+    msg = (
+        "Радвам се, че можах да помогна! Има ли друго, с което да съм полезен?"
+        if _is_bg(state)
+        else "Glad I could help! Is there anything else I can help you with?"
+    )
+    return {"generation": msg, "clarify_count": 0}
 
 
 def finalize(state: AgentState) -> AgentState:
@@ -452,7 +504,7 @@ _GRADE_ANSWER_PROMPT = ChatPromptTemplate.from_messages(
 
 def grade_answer(state: AgentState) -> AgentState:
     """Verify the generated answer is grounded in the context (Self-RAG)."""
-    grader = get_llm().with_structured_output(GradeAnswer)
+    grader = get_llm(thinking_budget=0).with_structured_output(GradeAnswer)
     verdict: GradeAnswer = (_GRADE_ANSWER_PROMPT | grader).invoke(
         {
             "context": state.get("context", ""),
