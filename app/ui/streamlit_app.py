@@ -111,6 +111,22 @@ st.markdown(
       .mobi-wordmark { height: 24px; display: block; margin-bottom: 3px; }
       .mobi-sub  { color: var(--muted); font-size: 0.8rem; margin-top: 1px; }
 
+      /* Products covered by the knowledge base — small chips under the topbar
+         so users can see everything the assistant supports at a glance. */
+      .mobi-topics {
+        display: flex; flex-wrap: wrap; gap: 0.4rem;
+        margin: -0.5rem 0 1.1rem 0;
+      }
+      .mobi-topics-label {
+        width: 100%; color: var(--muted); font-size: 0.75rem;
+        font-weight: 600; margin-bottom: 0.1rem;
+      }
+      .mobi-chip {
+        background: #EEF6FF; border: 1px solid var(--border);
+        color: var(--primary-dark); font-size: 0.78rem; font-weight: 600;
+        border-radius: 999px; padding: 0.2rem 0.65rem; white-space: nowrap;
+      }
+
       /* Meta line under assistant replies (e.g. "Mobi · AI Agent · Just now") */
       .mobi-meta {
         color: var(--muted); font-size: 0.75rem;
@@ -341,6 +357,31 @@ st.markdown(
         {_name_html}
         <div class="mobi-sub">AI Agent • The team can also help</div>
       </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Products covered by the knowledge base, shown as chips under the header so
+# users can see the full supported range (e.g. Sheets/OfficeSuite/MobiScan)
+# rather than assuming only the three most prominent apps are supported.
+# Curated from the ingested MobiSystems help-center categories/sections.
+_KB_PRODUCTS = [
+    "MobiOffice (Docs, Sheets, Slides)",
+    "MobiPDF",
+    "MobiDrive",
+    "MobiScan",
+    "MobiMail",
+    "File Commander",
+    "OfficeSuite",
+    "Account & billing",
+]
+_chips_html = "".join(f'<span class="mobi-chip">{p}</span>' for p in _KB_PRODUCTS)
+st.markdown(
+    f"""
+    <div class="mobi-topics">
+      <div class="mobi-topics-label">I can help with:</div>
+      {_chips_html}
     </div>
     """,
     unsafe_allow_html=True,
