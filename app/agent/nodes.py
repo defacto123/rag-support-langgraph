@@ -77,6 +77,50 @@ def _is_bg(state: AgentState) -> bool:
     return _script(_user_question(state)) == "cyrillic"
 
 
+_TRANSLATE_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a translator. Translate the user's text into {target}. "
+            "Preserve ALL Markdown formatting, line breaks, lists and "
+            "product/UI names exactly. Do not add, remove, summarise or "
+            "explain anything — output ONLY the translation.",
+        ),
+        ("human", "{text}"),
+    ]
+)
+
+
+def _enforce_language(answer: str, user_question: str) -> str:
+    """Guarantee the answer is written in the user's language.
+
+    The generation prompts and much of the knowledge base are in Bulgarian,
+    which biases the model into answering in Bulgarian even for English
+    questions (and, more rarely, the reverse). A single instruction line is
+    not always enough to override that bias, so this is a deterministic
+    backstop.
+
+    In this bilingual (Bulgarian/English) KB a SCRIPT mismatch between the
+    question and the answer reliably means exactly that EN<->BG confusion, so
+    we translate the answer into the user's language. Same-script answers are
+    left untouched — including accented Latin languages (French/German/...),
+    which never mismatch English on script and so are never wrongly rewritten.
+    """
+    if not answer.strip():
+        return answer
+    q_script = _script(user_question)
+    if _script(answer) == q_script:
+        return answer  # already in the right language
+    target = "Bulgarian" if q_script == "cyrillic" else "English"
+    llm = get_llm(temperature=0.0, thinking_budget=0)
+    translated = (
+        (_TRANSLATE_PROMPT | llm)
+        .invoke({"target": target, "text": answer})
+        .content.strip()
+    )
+    return translated or answer
+
+
 class GradeDocuments(BaseModel):
     """Structured verdict on whether the context answers the question."""
 
@@ -241,7 +285,8 @@ def generate_direct(state: AgentState) -> AgentState:
             "lang_directive": _lang_directive(_user_question(state)),
         }
     )
-    return {"generation": response.content, "clarify_count": 0}
+    answer = _enforce_language(response.content, _user_question(state))
+    return {"generation": answer, "clarify_count": 0}
 
 
 class ElaborationResult(BaseModel):
@@ -364,6 +409,9 @@ def elaborate(state: AgentState) -> AgentState:
     else:
         answer = result.explanation
 
+    # Force the answer into the user's language (backstop for prompt bias).
+    answer = _enforce_language(answer, _user_question(state))
+
     return {"generation": answer, "clarify_count": count}
 
 
@@ -425,8 +473,12 @@ def generate(state: AgentState) -> AgentState:
         }
     )
 
+    # Deterministic backstop: force the answer into the user's language even
+    # if the Bulgarian prompt/context biased the model the wrong way.
+    answer = _enforce_language(response.content, user_question)
+
     return {
-        "generation": response.content,
+        "generation": answer,
         "generation_retries": state.get("generation_retries", 0) + 1,
     }
 
