@@ -7,6 +7,7 @@ Endpoints:
 """
 
 import logging
+import os
 import re
 import shutil
 from pathlib import Path
@@ -17,6 +18,15 @@ from pydantic import BaseModel
 from app.agent.graph import ask
 from app.config import settings
 from app.ingestion.pipeline import ingest_document
+
+# Configure root logging so the app's own INFO logs (e.g. retrieval
+# provenance below) reach stdout and, in turn, Cloud Run -> Cloud Logging.
+# Without this, Python defaults to WARNING and these lines are silently
+# dropped in production. Level is overridable via LOG_LEVEL (default INFO).
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 logger = logging.getLogger(__name__)
 

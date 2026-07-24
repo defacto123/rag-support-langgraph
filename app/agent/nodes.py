@@ -49,13 +49,22 @@ def _lang_directive(text: str) -> str:
     a question was answered in Bulgarian due to the Bulgarian prompt bias.
     """
     base = (
-        "IMPORTANT: Detect the language of the user's message and write your "
-        "ENTIRE reply in that SAME language. Do NOT default to Bulgarian or "
-        "English when the user wrote in another language."
+        "CRITICAL LANGUAGE RULE: Write your ENTIRE reply in the SAME language "
+        "as the user's message. Match the user's language exactly and do NOT "
+        "switch to a different language for any reason — not even because the "
+        "context, the conversation history, or these instructions are in "
+        "another language.\n"
+        f'User\'s message: "{text}"'
     )
     if _script(text) == "cyrillic":
         # Cyrillic in this bilingual KB context = Bulgarian.
-        return base + " The user's message is in Bulgarian; answer in Bulgarian."
+        return base + "\nThe user's message is in Bulgarian; answer in Bulgarian."
+    # Pure ASCII Latin in this bilingual (Bulgarian/English) KB is
+    # overwhelmingly English, so we can safely name it. Accented Latin
+    # (French/German/Spanish/...) stays on the generic self-detecting order
+    # rather than being mis-labelled as English.
+    if all(ord(ch) < 128 for ch in text):
+        return base + "\nThe user's message is in English; answer in English."
     return base
 
 
@@ -98,14 +107,21 @@ _ANSWER_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Ти си асистент, който отговаря на въпроси само въз основа на "
-            "предоставения контекст. ВИНАГИ отговаряй на СЪЩИЯ език, на "
-            "който е зададен въпросът, дори ако контекстът е на друг език — "
-            "в такъв случай преведи нужната информация. "
+            "Ти си асистент за поддръжка, който отговаря въз основа на "
+            "предоставения контекст. Използвай ЦЯЛАТА полезна информация в "
+            "контекста и дай възможно най-полезния отговор — дори когато "
+            "контекстът покрива само ЧАСТ от въпроса, обобщи и представи "
+            "наличната релевантна информация, вместо да отказваш. Ако "
+            "някоя подробност липсва, отговори с това, което е налично, и "
+            "кратко отбележи какво не е описано. "
+            "НЕ измисляй факти, които липсват в контекста. Кажи, че нямаш "
+            "информация, САМО ако контекстът е напълно неотносим към "
+            "въпроса. "
+            "ВИНАГИ отговаряй на СЪЩИЯ език, на който е зададен въпросът, "
+            "дори ако контекстът е на друг език — в такъв случай преведи "
+            "нужната информация. "
             "НЕ цитирай източници и НЕ добавяй маркери като [Source N] в "
-            "отговора. "
-            "Ако контекстът не съдържа отговора, честно кажи, че нямаш "
-            "информация по въпроса. Не измисляй.",
+            "отговора.",
         ),
         (
             "human",
@@ -481,7 +497,10 @@ class GradeAnswer(BaseModel):
         "by the provided context (no invented facts)."
     )
     addresses_question: bool = Field(
-        description="True if the answer actually addresses the question."
+        description="True if the answer provides relevant, useful information "
+        "toward the question. A PARTIAL answer that covers only part of the "
+        "question still counts as True. Only False if the answer is "
+        "irrelevant or empty."
     )
 
 
@@ -489,10 +508,13 @@ _GRADE_ANSWER_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Ти си строг проверител. Дадени са контекст, въпрос и генериран "
+            "Ти си проверител. Дадени са контекст, въпрос и генериран "
             "отговор. Провери: (1) grounded — всяко фактологично твърдение "
             "подкрепено ли е от контекста, без измислици; (2) "
-            "addresses_question — отговорът адресира ли въпроса.",
+            "addresses_question — отговорът дава ли релевантна, полезна "
+            "информация по въпроса. ЧАСТИЧЕН отговор, който покрива само "
+            "част от въпроса, също се брои за true. Сложи false само ако "
+            "отговорът е неотносим или празен.",
         ),
         (
             "human",
