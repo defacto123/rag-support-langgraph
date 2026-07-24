@@ -417,11 +417,14 @@ def _render_sources(sources: list) -> None:
 
 
 # --- Welcome greeting (display-only; not part of the model context) ---
+# Reuse the curated KB product list so the greeting and the header chips
+# stay in sync from a single source of truth.
+_greeting_products = "\n".join(f"- {p}" for p in _KB_PRODUCTS)
 with st.chat_message("assistant"):
     st.markdown(
         "Hi there! You're speaking with **Mobi AI Agent**.\n\n"
         "I can help you find answers and get support for:\n\n"
-        "- MobiOffice\n- MobiPDF\n- MobiDrive\n\n"
+        f"{_greeting_products}\n\n"
         "How can I assist you today?"
     )
 _assistant_meta()
