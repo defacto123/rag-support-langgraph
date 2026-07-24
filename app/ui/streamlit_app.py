@@ -15,6 +15,7 @@ from pathlib import Path
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8010")
 
@@ -256,6 +257,19 @@ st.markdown(
         background: #EEF6FF; border: 1.5px dashed var(--primary-2);
         border-radius: 14px;
       }
+
+      /* --- Mobile: keep the input bar glued to the keyboard ---
+         On phones the extra bottom padding leaves a visible gap between the
+         text field and the on-screen keyboard, so trim it. The JS below
+         (visualViewport) then lifts the whole bar to sit on the keyboard. */
+      @media (max-width: 640px) {
+        [data-testid="stChatInput"] { padding-bottom: 0.4rem; }
+        [data-testid="stBottomBlockContainer"] {
+          padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+          transition: transform 0.15s ease-out;
+          will-change: transform;
+        }
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -412,3 +426,45 @@ if prompt := st.chat_input("Message…"):
     st.session_state.messages.append(
         {"role": "assistant", "content": answer, "sources": sources}
     )
+
+
+# --- Mobile keyboard fix (iOS + Android) ---
+# Streamlit's chat input bar is `position: fixed; bottom: 0`, anchored to the
+# layout viewport. When the on-screen keyboard opens, the layout viewport does
+# NOT shrink (only the *visual* viewport does), so the bar floats with a large
+# gap above the keyboard. We track the visual viewport and lift the bar by the
+# keyboard overlap so it sits right on top of the keyboard.
+#
+# The overlap is `innerHeight - visualViewport.height - offsetTop`; on browsers
+# that already resize the layout for the keyboard this is ~0, so the transform
+# is a no-op there (no double-shift). Runs from a 0-height component iframe and
+# reaches into the parent document (standard Streamlit pattern); it no-ops if
+# visualViewport or the target element is unavailable.
+components.html(
+    """
+    <script>
+    (function () {
+      const win = window.parent;
+      const doc = win.document;
+      const vv = win.visualViewport;
+      if (!vv) return;
+
+      function fit() {
+        const bar = doc.querySelector('[data-testid="stBottomBlockContainer"]')
+                 || doc.querySelector('[data-testid="stChatInput"]');
+        if (!bar) return;
+        const overlap = win.innerHeight - vv.height - vv.offsetTop;
+        bar.style.transform = overlap > 1 ? 'translateY(' + (-overlap) + 'px)' : '';
+      }
+
+      if (!win.__mobiKbFix) {
+        win.__mobiKbFix = true;
+        vv.addEventListener('resize', fit);
+        vv.addEventListener('scroll', fit);
+      }
+      fit();
+    })();
+    </script>
+    """,
+    height=0,
+)
