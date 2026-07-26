@@ -1,11 +1,17 @@
 name: Deploy MobiSystems KB service
 
-# Manual-only pipeline for the pre-indexed MobiSystems support assistant.
-# It reuses the same Docker image as the main app, but points at the
-# 'mobisystems' Qdrant collection and disables uploads (chat-only KB).
-# Run it from the Actions tab (or `gh workflow run`) whenever the KB or
-# image needs to be re-deployed.
+# The single deploy pipeline for production. Deploys the pre-indexed
+# MobiSystems support assistant (mobi-api + mobi-ui in europe-west1),
+# pointing at the 'mobisystems' Qdrant collection with uploads disabled
+# (chat-only KB).
+#
+# Runs automatically on every push to main (i.e. after a PR merge) so that
+# ONLY the mobi-* services are (re)deployed. The old rag-api/rag-ui demo
+# services are deprecated and are no longer deployed by any workflow.
+# workflow_dispatch is kept for manual re-deploys from the Actions tab.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 env:
